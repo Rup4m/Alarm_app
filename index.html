@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guardian Security Hub</title>
+    <style>
+        :root {
+            --bg: #0f172a; --card: rgba(30, 41, 59, 0.7);
+            --accent: #38bdf8; --danger: #ef4444; --text: #f8fafc;
+        }
+        body {
+            margin: 0; font-family: sans-serif; background: var(--bg);
+            color: var(--text); display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+        }
+        .container {
+            width: 90%; max-width: 400px; padding: 2rem; margin-top: 20px;
+            background: var(--card); backdrop-filter: blur(10px);
+            border-radius: 24px; border: 1px solid rgba(255,255,255,0.1); text-align: center;
+        }
+        .status-badge {
+            padding: 8px 16px; border-radius: 20px; background: #1e293b;
+            font-size: 0.8rem; margin-bottom: 20px; display: inline-block;
+        }
+        .connected-lite { color: #22c55e; border: 1px solid #22c55e; }
+        .sensor-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px;
+        }
+        .card {
+            background: rgba(15, 23, 42, 0.5); padding: 20px; border-radius: 15px;
+            border: 1px solid rgba(255,255,255,0.05); transition: 0.3s;
+        }
+        .card.alarm {
+            background: var(--danger) !important; color: white;
+            animation: pulse 0.5s infinite alternate;
+        }
+        @keyframes pulse { from { opacity: 1; } to { opacity: 0.7; } }
+        #connectBtn {
+            width: 100%; background: var(--accent); color: #000; border: none;
+            padding: 15px; border-radius: 12px; font-weight: bold; cursor: pointer; margin-top: 20px;
+        }
+        .log { font-size: 0.7rem; color: #64748b; margin-top: 15px; height: 40px; overflow: hidden; }
+    </style>
+</head>
+<body>
+
+    <h1>GUARDIAN <span style="color:var(--accent)">UI</span></h1>
+    
+    <div class="container">
+        <div id="status" class="status-badge">NOT CONNECTED</div>
+        
+        <div class="sensor-grid">
+            <div class="card" id="fire">🔥<br>FIRE</div>
+            <div class="card" id="smoke">💨<br>SMOKE</div>
+            <div class="card" id="motion">🏃<br>MOTION</div>
+            <div class="card" id="water">💧<br>WATER</div>
+        </div>
+
+        <div id="log" class="log">Waiting for connection...</div>
+
+        <button id="connectBtn">CONNECT DEVICE</button>
+        <button id="resetBtn" style="background:none; color:white; border:none; margin-top:10px; cursor:pointer;">Clear Alarms</button>
+    </div>
+
+    <script>
+        let characteristic;
+        const SERIAL_UUID = '00001101-0000-1000-8000-00805f9b34fb';
+
+        document.getElementById('connectBtn').addEventListener('click', async () => {
+            try {
+                const device = await navigator.bluetooth.requestDevice({
+                    filters: [{ namePrefix: 'HC' }],
+                    optionalServices: [SERIAL_UUID]
+                });
+
+                const server = await device.gatt.connect();
+                const service = await server.getPrimaryService(SERIAL_UUID);
+                characteristic = await service.getCharacteristic(SERIAL_UUID);
+
+                await characteristic.startNotifications();
+                characteristic.addEventListener('characteristicvaluechanged', (e) => {
+                    const decoder = new TextDecoder();
+                    const data = decoder.decode(e.target.value).trim();
+                    handleData(data);
+                });
+
+                document.getElementById('status').innerText = "ONLINE: " + device.name;
+                document.getElementById('status').classList.add('connected-lite');
+                document.getElementById('connectBtn').style.display = 'none';
+                updateLog("Secure link established.");
+            } catch (err) {
+                updateLog("Error: " + err);
+            }
+        });
+
+        function handleData(msg) {
+            updateLog("Received: " + msg);
+            // Match Arduino strings to IDs
+            const id = msg.toLowerCase();
+            const element = document.getElementById(id);
+            if (element) {
+                element.classList.add('alarm');
+                if (navigator.vibrate) navigator.vibrate([500, 200, 500]);
+                new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg').play();
+            }
+        }
+
+        function updateLog(t) { document.getElementById('log').innerText = t; }
+
+        document.getElementById('resetBtn').onclick = () => {
+            document.querySelectorAll('.card').forEach(c => c.classList.remove('alarm'));
+        };
+    </script>
+</body>
+</html>
